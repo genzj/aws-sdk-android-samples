@@ -24,7 +24,7 @@ import android.widget.NumberPicker;
 import android.widget.TextView;
 import android.widget.ToggleButton;
 
-import com.amazonaws.auth.CognitoCachingCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.iotdata.AWSIotDataClient;
 import com.amazonaws.services.iotdata.model.GetThingShadowRequest;
@@ -43,14 +43,19 @@ public class TemperatureActivity extends Activity {
 
     // Customer specific IoT endpoint
     // AWS Iot CLI describe-endpoint call returns: XXXXXXXXXX.iot.<region>.amazonaws.com
-    private static final String CUSTOMER_SPECIFIC_ENDPOINT = "CHANGE_ME";
-    // Cognito pool ID. For this app, pool needs to be unauthenticated pool with
-    // AWS IoT permissions.
-    private static final String COGNITO_POOL_ID = "CHANGE_ME";
+    private static final String CUSTOMER_SPECIFIC_ENDPOINT = "antrj80hsqpvv.iot.us-east-1.amazonaws.com";
+
     // Region of AWS IoT
     private static final Regions MY_REGION = Regions.US_EAST_1;
+    public static final String ACCESS_KEY = "abcd";
+    public static final String PRIVATE_KEY = "efgh";
+    public static final String THING_NAME = "test-air-conditioner";
 
-    CognitoCachingCredentialsProvider credentialsProvider;
+
+    public static final String TEMPERATURE_STATUS_SUFFIX = "TemperatureStatus";
+    public static final String TEMPERATURE_CONTROL_SUFFIX = "TemperatureControl";
+
+    BasicAWSCredentials credentials;
 
     AWSIotDataClient iotDataClient;
 
@@ -60,13 +65,12 @@ public class TemperatureActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         // Initialize the Amazon Cognito credentials provider
-        credentialsProvider = new CognitoCachingCredentialsProvider(
-                getApplicationContext(),
-                COGNITO_POOL_ID, // Identity Pool ID
-                MY_REGION // Region
+        credentials = new BasicAWSCredentials(
+                ACCESS_KEY,
+                PRIVATE_KEY
         );
 
-        iotDataClient = new AWSIotDataClient(credentialsProvider);
+        iotDataClient = new AWSIotDataClient(credentials);
         String iotDataEndpoint = CUSTOMER_SPECIFIC_ENDPOINT;
         iotDataClient.setEndpoint(iotDataEndpoint);
 
@@ -82,6 +86,10 @@ public class TemperatureActivity extends Activity {
         Gson gson = new Gson();
         TemperatureStatus ts = gson.fromJson(temperatureStatusState, TemperatureStatus.class);
 
+        if (ts.state.desired == null || ts.state.desired.curState == null || ts.state.desired.intTemp == null || ts.state.desired.extTemp == null)
+        {
+            return;
+        }
         Log.i(LOG_TAG, String.format("intTemp:  %d", ts.state.desired.intTemp));
         Log.i(LOG_TAG, String.format("extTemp:  %d", ts.state.desired.extTemp));
         Log.i(LOG_TAG, String.format("curState: %s", ts.state.desired.curState));
@@ -103,7 +111,9 @@ public class TemperatureActivity extends Activity {
     public void temperatureControlUpdated(String temperatureControlState) {
         Gson gson = new Gson();
         TemperatureControl tc = gson.fromJson(temperatureControlState, TemperatureControl.class);
-
+        if (tc.state.desired == null || tc.state.desired.enabled == null || tc.state.desired.setPoint == null) {
+            return;
+        }
         Log.i(LOG_TAG, String.format("setPoint: %d", tc.state.desired.setPoint));
         Log.i(LOG_TAG, String.format("enabled: %b", tc.state.desired.enabled));
 
@@ -119,10 +129,10 @@ public class TemperatureActivity extends Activity {
     }
 
     public void getShadows() {
-        GetShadowTask getStatusShadowTask = new GetShadowTask("TemperatureStatus");
+        GetShadowTask getStatusShadowTask = new GetShadowTask(THING_NAME + "-" + TEMPERATURE_STATUS_SUFFIX);
         getStatusShadowTask.execute();
 
-        GetShadowTask getControlShadowTask = new GetShadowTask("TemperatureControl");
+        GetShadowTask getControlShadowTask = new GetShadowTask(THING_NAME + "-" + TEMPERATURE_CONTROL_SUFFIX);
         getControlShadowTask.execute();
     }
 
@@ -131,7 +141,7 @@ public class TemperatureActivity extends Activity {
 
         Log.i(LOG_TAG, String.format("System %s", tb.isChecked() ? "enabled" : "disabled"));
         UpdateShadowTask updateShadowTask = new UpdateShadowTask();
-        updateShadowTask.setThingName("TemperatureControl");
+        updateShadowTask.setThingName(THING_NAME + "-" + TEMPERATURE_CONTROL_SUFFIX);
         String newState = String.format("{\"state\":{\"desired\":{\"enabled\":%s}}}",
                 tb.isChecked() ? "true" : "false");
         Log.i(LOG_TAG, newState);
@@ -144,7 +154,7 @@ public class TemperatureActivity extends Activity {
         Integer newSetpoint = np.getValue();
         Log.i(LOG_TAG, "New setpoint:" + newSetpoint);
         UpdateShadowTask updateShadowTask = new UpdateShadowTask();
-        updateShadowTask.setThingName("TemperatureControl");
+        updateShadowTask.setThingName(THING_NAME + "-" + TEMPERATURE_CONTROL_SUFFIX);
         String newState = String.format("{\"state\":{\"desired\":{\"setPoint\":%d}}}", newSetpoint);
         Log.i(LOG_TAG, newState);
         updateShadowTask.setState(newState);
@@ -179,9 +189,9 @@ public class TemperatureActivity extends Activity {
         protected void onPostExecute(AsyncTaskResult<String> result) {
             if (result.getError() == null) {
                 Log.i(GetShadowTask.class.getCanonicalName(), result.getResult());
-                if ("TemperatureControl".equals(thingName)) {
+                if (thingName.endsWith(TEMPERATURE_CONTROL_SUFFIX)) {
                     temperatureControlUpdated(result.getResult());
-                } else if ("TemperatureStatus".equals(thingName)) {
+                } else if (thingName.endsWith(TEMPERATURE_STATUS_SUFFIX)) {
                     temperatureStatusUpdated(result.getResult());
                 }
             } else {
