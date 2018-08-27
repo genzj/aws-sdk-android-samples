@@ -18,7 +18,6 @@ package com.amazonaws.demo.temperaturecontrol;
 import android.app.Activity;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.os.Handler;
 import android.util.Log;
 import android.view.View;
 import android.widget.NumberPicker;
@@ -35,8 +34,6 @@ import com.amazonaws.services.iotdata.model.UpdateThingShadowResult;
 import com.google.gson.Gson;
 
 import java.nio.ByteBuffer;
-import java.util.Timer;
-import java.util.TimerTask;
 
 public class TemperatureActivity extends Activity {
 
@@ -62,8 +59,6 @@ public class TemperatureActivity extends Activity {
 
     AWSIotDataClient iotDataClient;
 
-    Timer refreshTimer;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -84,7 +79,7 @@ public class TemperatureActivity extends Activity {
         np.setMaxValue(80);
         np.setWrapSelectorWheel(false);
 
-        startUpdateTimer();
+        getShadows();
     }
 
     public void temperatureStatusUpdated(String temperatureStatusState) {
@@ -164,30 +159,6 @@ public class TemperatureActivity extends Activity {
         Log.i(LOG_TAG, newState);
         updateShadowTask.setState(newState);
         updateShadowTask.execute();
-    }
-
-    public void startUpdateTimer() {
-        final Handler handler = new Handler();
-        if (refreshTimer != null) {
-            refreshTimer.cancel();
-            refreshTimer = null;
-        }
-        refreshTimer = new Timer();
-        TimerTask doAsynchronousTask = new TimerTask() {
-            @Override
-            public void run() {
-                handler.post(new Runnable() {
-                    public void run() {
-                        try {
-                            getShadows();
-                        } catch (Exception e) {
-                            // TODO Auto-generated catch block
-                        }
-                    }
-                });
-            }
-        };
-        refreshTimer.schedule(doAsynchronousTask, 0, 1000); //execute in every 1000 ms
     }
 
     private class GetShadowTask extends AsyncTask<Void, Void, AsyncTaskResult<String>> {
